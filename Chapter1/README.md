@@ -591,3 +591,196 @@ b'\xed\x95\x9c\xea\xb8\x80'
 - `bytes`와 `str` 인스턴스를 (>, ==, +, %와 같은) 연산자에 섞어서 사용할 수 없다.
 - 이진 데이터를 파일에서 읽거나 파일에 쓰고 싶으면 항상 이진 모드 ('rb'나 'wb')로 파일을 열어라.
 - 유니코드 데이터를 파일에서 읽거나 파일에 쓰고 싶을때는 시스템 디폴트 인코딩에 주의하라. 인코딩 차이로 놀라고 싶지 않으면 `open`에 `encoding` 파라미터를 명시적으로 전달하라.
+
+## BETTER WAY4 C 스타일 형식 문자열을 str.format과 쓰기보다는 f-문자열을 통한 인터폴레이션을 사용하라
+
+파이썬은 사용자 인터페이스, 명령줄 유틸리티 메시지, 파일과 소켓에 데이터를 쓰는 등 문자열을 많이 사용한다.
+
+**형식화**는 미리 정의된 문자열에 데이터 값을 끼워 넣어서 원하는 형식으로 출력하는 것을 의미한다. 파이썬에서는 언어에 내장된 기능과 표준 라이브러리를 통해 네 가지 형식화 방법을 제공한다.
+
+### % 연산자
+
+```python
+a = 0b10111011
+b = 0xc5f
+print('이진수 %d, 십육진수 %d' % (a, b))
+```
+
+```terminal
+>>>
+이진수 187, 십육진수 3167
+```
+
+형식 지정자의 문법은 C의 printf 함수에서 비롯된 것이다. 하지만 파이썬에서 C 스타일 형식 문자열을 사용하는 데는 네 가지 문제점이 있다.
+
+첫 번째 문제점은 형식화 식에서 오른쪽에 있는 tuple 내 데이터 값의 순서를 바꾸거나 값의 타입을 바꾸면 타입 변환이 불가능하므로 오류가 발생한다는 점이다.
+
+```python
+# 문제 1: 순서나 타입이 맞지 않으면 오류 발생
+key = 'my_var'
+value = 1.234
+formatted = '%-10s = %.2f' % (key, value)  # 정상
+print(formatted)  # my_var     = 1.23
+
+# 순서를 바꾸면 오류 발생
+formatted = '%-10s = %.2f' % (value, key)  # TypeError: must be real number, not str
+
+# 타입을 바꾸면 오류 발생
+formatted = '%-10s = %.2f' % (key, '1.234')  # TypeError: must be real number, not str
+```
+
+두 번째 문제점은 형식화를 하기 전에 값을 살짝 변경해야 한다면 식을 읽기가 매우 어려워진다는 점이다.
+
+```python
+# 문제 2: 값을 수정해야 할 때 가독성이 떨어짐
+pantry = [
+    ('아보카도', 1.0),
+    ('바나나', 2.5),
+    ('사과', 3.0)
+]
+
+# C 스타일 형식화 - 가독성이 떨어짐
+for item in pantry:
+    print('%-10s = %.1f' % (item[0], item[1] * 1.2))  # 20% 가격 인상
+```
+
+세 번째 문제점은 형식화 문자열에서 같은 값을 여러 번 사용하고 싶다면 튜플에서 같은 값을 여러 번 반복해야 한다는 점이다.
+
+```python
+# 문제 3: 같은 값을 반복해서 사용해야 함
+name = 'Python'
+formatted = 'Hello, %s! Welcome to %s. %s is a great language.' % (name, name, name)
+print(formatted)  # Hello, Python! Welcome to Python. Python is a great language.
+```
+
+마지막 문제점은 형식화 식에 딕셔너리를 사용하면 문장이 번잡스러워진다는 것이다.
+
+```python
+# 문제 4: 딕셔너리 사용 시 문장이 복잡해짐
+data = {
+    'name': 'Python',
+    'version': '3.9',
+    'year': 2020
+}
+formatted = '%(name)s %(version)s was released in %(year)d' % data
+print(formatted)  # Python 3.9 was released in 2020
+```
+
+### 내장 함수 format
+
+내장 함수 `format`은 단일 값을 형식화할 때 유용하다.
+
+```python
+# 기본 사용법
+x = 1234.5678
+print(format(x, '0.2f'))  # '1234.57'
+print(format(x, '>10.1f'))  # '   1234.6'
+
+# 천 단위 구분자
+print(format(1234567, ','))  # '1,234,567'
+
+# 진수 변환
+print(format(42, 'b'))  # '101010' (이진수)
+```
+
+### str.format 메서드
+
+`str` 타입에 새로 추가된 `format` 메서드를 호출하면 여러 값에 대해 한꺼번에 이 기능을 적용할 수 있다.
+
+```python
+# 위치 기반 인자
+print('{} {} {}'.format('파이썬', '최고', '언어'))  # '파이썬 최고 언어'
+
+# 키워드 인자
+print('{name}는 {age}살입니다.'.format(name='홍길동', age=25))  # '홍길동는 25살입니다.'
+
+# 딕셔너리 언패킹
+data = {'name': '홍길동', 'age': 25}
+print('{name}는 {age}살입니다.'.format(**data))  # '홍길동는 25살입니다.'
+
+# 인덱스 기반
+key = 'my_var'
+value = 1.234
+formatted = '{1} = {0}'.format(key, value)
+print(formatted)
+```
+
+```terminal
+>>>
+1.234 = my_var
+```
+
+위치 인덱스를 사용하면 format에 넘기는 인자의 순서를 바꾸지 않아도 형식화 문자열을 사용해 형식화한 값의 출력 순서를 변경할 수 있다. 그리고 키워드 인자를 사용하면 `format`에 넘기는 인자에 값을 여러 번 반복할 필요가 없다.
+
+하지만 `format` 메서드도 앞에서 설명한 두 번째 문제점은 해결하지 못한다.
+
+```python
+for i, (item, count) in enumerate(pantry):
+    old_style = '#%d: %s = %d' % (
+        i + 1,
+        item.title(),
+        count * 1.2
+    )
+
+    new_style = '#{}: {:<10s} = {}'.format(
+        i + 1,
+        item.title(),
+        count * 1.2
+    )
+    
+    assert old_style == new_style
+```
+
+C 스타일 형식화와 새로운 형식화는 가독성 면에서 거의 차이가 없으며, 둘 다 읽기에 좋지 않다.
+
+이런 단점 때문에 웬만하면 `str.format` 메서드를 사용하지 말 것을 권한다.
+
+
+### f-문자열
+
+Python 3.6부터 도입된 f-문자열은 가장 현대적이고 읽기 쉬운 문자열 형식화 방법입니다.
+
+```python
+# 기본 사용법
+name = '파이썬'
+version = 3.10
+print(f'{name} {version}')  # '파이썬 3.10'
+
+# 표현식 사용
+x, y = 10, 20
+print(f'{x} + {y} = {x + y}')  # '10 + 20 = 30'
+
+# 딕셔너리 사용
+data = {'name': '홍길동', 'age': 25}
+print(f'{data["name"]}는 {data["age"]}살입니다.')  # '홍길동는 25살입니다.'
+
+# 조건부 표현식
+age = 20
+print(f'당신은 {"성인" if age >= 20 else "미성년자"}입니다.')  # '당신은 성인입니다.'
+
+# repr 문자열
+formatted = f'{key!r:<10} = {value:.2f}'
+print(formatted)
+
+# 여러 형식화 길이 차이 비교
+f_string = f'{key:<10} = {value:.2f}'
+
+c_tuple  = '%-10s = %.2f' % (key, value)
+
+str_args = '{:<10} = {:.2f}'.format(key, value)
+
+str_kw   = '{key:<10} = {value:.2f}'.format(key=key,
+                                            value=value)
+
+c_dict   = '%(key)-10s = %(value).2f' % {'key': key,
+                                         'value': value}
+```
+
+f-문자열이 제공하는 표현력, 간결성, 명확성을 고려할 때 파이썬 프로그래머가 사용할 수 있는 형식화 옵션 중에서 f-문자열이 가장 좋은 선택이다.
+
+### 기억해야 할 내용
+
+- % 연산자를 사용하는 C 스타일 형식화 문자열은 여러 가지 단점과 번잡성이라는 문제가 있다.
+- `str.format` 메서드는 형식 지정자 [미니 언어](https://docs.python.org/3/library/string.html#format-specification-mini-language)에서 유용한 개념 몇 가지를 새로 제공했다. 하지만 이를 제외하면 str.format 메서드도 C 스타일 형식 문자열의 문제점을 그대로 가지고 있으므로, 가능하면 피하는 것이 좋다.
+- f-문자열은 값을 문자열 안에 넣는 새로운 구문으로, C 스타일 형식화 문자열의 가장 큰 문제점을 해결해준다.
+- f-문자열은 간결하지만, 위치 지정자 안에 임의의 파이썬 식을 직접 포함시킬 수 있으므로 매우 강력하다.
